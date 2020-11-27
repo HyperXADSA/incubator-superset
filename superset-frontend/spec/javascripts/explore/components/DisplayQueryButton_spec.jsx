@@ -18,9 +18,10 @@
  */
 import React from 'react';
 import { mount } from 'enzyme';
+import { supersetTheme, ThemeProvider } from '@superset-ui/core';
+import { Menu } from 'src/common/components';
 import ModalTrigger from 'src/components/ModalTrigger';
 import { DisplayQueryButton } from 'src/explore/components/DisplayQueryButton';
-import { MenuItem } from 'react-bootstrap';
 
 describe('DisplayQueryButton', () => {
   const defaultProps = {
@@ -43,8 +44,13 @@ describe('DisplayQueryButton', () => {
     );
   });
   it('renders a dropdown', () => {
-    const wrapper = mount(<DisplayQueryButton {...defaultProps} />);
+    const wrapper = mount(<DisplayQueryButton {...defaultProps} />, {
+      wrappingComponent: ThemeProvider,
+      wrappingComponentProps: {
+        theme: supersetTheme,
+      },
+    });
     expect(wrapper.find(ModalTrigger)).toHaveLength(3);
-    expect(wrapper.find(MenuItem)).toHaveLength(5);
+    expect(wrapper.find(Menu.Item)).toHaveLength(5);
   });
 });

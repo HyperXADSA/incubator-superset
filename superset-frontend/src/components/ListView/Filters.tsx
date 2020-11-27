@@ -87,8 +87,18 @@ function SelectFilter({
   };
 
   const options = [clearFilterSelect, ...selects];
+  let initialOption = clearFilterSelect;
 
-  const [selectedOption, setSelectedOption] = useState(clearFilterSelect);
+  // Set initial value if not async
+  if (!fetchSelects) {
+    const matchingOption = options.find(x => x.value === initialValue);
+
+    if (matchingOption) {
+      initialOption = matchingOption;
+    }
+  }
+
+  const [selectedOption, setSelectedOption] = useState(initialOption);
   const onChange = (selected: SelectOption | null) => {
     if (selected === null) return;
     onSelect(
@@ -119,6 +129,7 @@ function SelectFilter({
         setSelectedOption(matchingOption);
       }
     }
+
     return {
       options: result,
       hasMore,
@@ -209,9 +220,7 @@ interface UIFiltersProps {
 
 const FilterWrapper = styled.div`
   display: inline-block;
-  padding: ${({ theme }) => theme.gridUnit * 6}px
-    ${({ theme }) => theme.gridUnit * 4}px
-    ${({ theme }) => theme.gridUnit * 2}px;
+  padding: 0 0 ${({ theme }) => theme.gridUnit * 8}px;
 `;
 
 function UIFilters({

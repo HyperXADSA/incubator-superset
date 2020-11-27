@@ -17,7 +17,7 @@
  * under the License.
  */
 import React from 'react';
-import { mount, shallow } from 'enzyme';
+import { styledMount as mount } from 'spec/helpers/theming';
 import { act } from 'react-dom/test-utils';
 import { QueryParamProvider } from 'use-query-params';
 import { supersetTheme, ThemeProvider } from '@superset-ui/core';
@@ -29,9 +29,9 @@ import { CardSortSelect } from 'src/components/ListView/CardSortSelect';
 import IndeterminateCheckbox from 'src/components/IndeterminateCheckbox';
 import ListView from 'src/components/ListView/ListView';
 import ListViewFilters from 'src/components/ListView/Filters';
-import ListViewPagination from 'src/components/ListView/Pagination';
+import ListViewPagination from 'src/components/dataViewCommon/Pagination';
+import TableCollection from 'src/components/dataViewCommon/TableCollection';
 import Pagination from 'src/components/Pagination';
-import TableCollection from 'src/components/ListView/TableCollection';
 
 import waitForComponentToPaint from 'spec/helpers/waitForComponentToPaint';
 
@@ -338,7 +338,7 @@ describe('ListView', () => {
       filters: [...mockedProps.filters, { id: 'some_column' }],
     };
     expect(() => {
-      shallow(<ListView {...props} />, {
+      mount(<ListView {...props} />, {
         wrappingComponent: ThemeProvider,
         wrappingComponentProps: { theme: supersetTheme },
       });

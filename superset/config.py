@@ -42,6 +42,7 @@ from superset.jinja_context import (  # pylint: disable=unused-import
 )
 from superset.stats_logger import DummyStatsLogger
 from superset.typing import CacheConfig
+from superset.utils.core import is_test
 from superset.utils.log import DBEventLogger
 from superset.utils.logging_configurator import DefaultLoggingConfigurator
 
@@ -284,6 +285,9 @@ LANGUAGES = {
     "ru": {"flag": "ru", "name": "Russian"},
     "ko": {"flag": "kr", "name": "Korean"},
 }
+# Turning off i18n by default as translation in most languages are
+# incomplete and not well maintained.
+LANGUAGES = {}
 
 # ---------------------------------------------------
 # Feature flags
@@ -294,21 +298,46 @@ LANGUAGES = {
 # and FEATURE_FLAGS = { 'BAR': True, 'BAZ': True } in superset_config.py
 # will result in combined feature flags of { 'FOO': True, 'BAR': True, 'BAZ': True }
 DEFAULT_FEATURE_FLAGS: Dict[str, bool] = {
+    # allow dashboard to use sub-domains to send chart request
+    # you also need ENABLE_CORS and
+    # SUPERSET_WEBSERVER_DOMAINS for list of domains
+    "ALLOW_DASHBOARD_DOMAIN_SHARDING": True,
     # Experimental feature introducing a client (browser) cache
     "CLIENT_CACHE": False,
     "ENABLE_EXPLORE_JSON_CSRF_PROTECTION": False,
-    "ENABLE_DASHBOARD_ETAG_HEADER": False,
+    "ENABLE_TEMPLATE_PROCESSING": False,
     "KV_STORE": False,
     "PRESTO_EXPAND_DATA": False,
     # Exposes API endpoint to compute thumbnails
     "THUMBNAILS": False,
-    "REDUCE_DASHBOARD_BOOTSTRAP_PAYLOAD": True,
+    "DASHBOARD_CACHE": False,
     "REMOVE_SLICE_LEVEL_LABEL_COLORS": False,
     "SHARE_QUERIES_VIA_KV_STORE": False,
     "SIP_38_VIZ_REARCHITECTURE": False,
     "TAGGING_SYSTEM": False,
     "SQLLAB_BACKEND_PERSISTENCE": False,
     "LISTVIEWS_DEFAULT_CARD_VIEW": False,
+    # Enables the replacement React views for all the FAB views (list, edit, show) with
+    # designs introduced in https://github.com/apache/incubator-superset/issues/8976
+    # (SIP-34). This is a work in progress so not all features available in FAB have
+    # been implemented.
+    "ENABLE_REACT_CRUD_VIEWS": True,
+    # When True, this flag allows display of HTML tags in Markdown components
+    "DISPLAY_MARKDOWN_HTML": True,
+    # When True, this escapes HTML (rather than rendering it) in Markdown components
+    "ESCAPE_MARKDOWN_HTML": False,
+    "VERSIONED_EXPORT": False,
+    # Note that: RowLevelSecurityFilter is only given by default to the Admin role
+    # and the Admin Role does have the all_datasources security permission.
+    # But, if users create a specific role with access to RowLevelSecurityFilter MVC
+    # and a custom datasource access, the table dropdown will not be correctly filtered
+    # by that custom datasource access. So we are assuming a default security config,
+    # a custom security config could potentially give access to setting filters on
+    # tables that users do not have access to.
+    "ROW_LEVEL_SECURITY": False,
+    # Enables Alerts and reports new implementation
+    "ALERT_REPORTS": False,
+    "SIP_34_QUERY_SEARCH_UI": False,
 }
 
 # Set the default view to card/grid view if thumbnail support is enabled.
@@ -366,9 +395,15 @@ IMG_UPLOAD_URL = "/static/uploads/"
 # Setup image size default is (300, 200, True)
 # IMG_SIZE = (300, 200, True)
 
-CACHE_DEFAULT_TIMEOUT = 60 * 60 * 24
+# Default cache timeout (in seconds), applies to all cache backends unless
+# specifically overridden in each cache config.
+CACHE_DEFAULT_TIMEOUT = 60 * 60 * 24  # 1 day
+
+# Default cache for Superset objects
 CACHE_CONFIG: CacheConfig = {"CACHE_TYPE": "null"}
-TABLE_NAMES_CACHE_CONFIG: CacheConfig = {"CACHE_TYPE": "null"}
+
+# Cache for datasource metadata and query results
+DATA_CACHE_CONFIG: CacheConfig = {"CACHE_TYPE": "null"}
 
 # CORS Options
 ENABLE_CORS = False
@@ -628,11 +663,11 @@ UPLOADED_CSV_HIVE_NAMESPACE: Optional[str] = None
 # db configuration and a result of this function.
 
 # mypy doesn't catch that if case ensures list content being always str
-ALLOWED_USER_CSV_SCHEMA_FUNC: Callable[
-    ["Database", "models.User"], List[str]
-] = lambda database, user: [
-    UPLOADED_CSV_HIVE_NAMESPACE
-] if UPLOADED_CSV_HIVE_NAMESPACE else []
+ALLOWED_USER_CSV_SCHEMA_FUNC: Callable[["Database", "models.User"], List[str]] = (
+    lambda database, user: [UPLOADED_CSV_HIVE_NAMESPACE]
+    if UPLOADED_CSV_HIVE_NAMESPACE
+    else []
+)
 
 # Values that should be treated as nulls for the csv uploads.
 CSV_DEFAULT_NA_NAMES = list(STR_NA_VALUES)
@@ -640,14 +675,19 @@ CSV_DEFAULT_NA_NAMES = list(STR_NA_VALUES)
 # A dictionary of items that gets merged into the Jinja context for
 # SQL Lab. The existing context gets updated with this dictionary,
 # meaning values for existing keys get overwritten by the content of this
-# dictionary.
+# dictionary. Exposing functionality through JINJA_CONTEXT_ADDONS has security
+# implications as it opens a window for a user to execute untrusted code.
+# It's important to make sure that the objects exposed (as well as objects attached
+# to those objets) are harmless. We recommend only exposing simple/pure functions that
+# return native types.
 JINJA_CONTEXT_ADDONS: Dict[str, Callable[..., Any]] = {}
 
-# A dictionary of macro template processors that gets merged into global
+# A dictionary of macro template processors (by engine) that gets merged into global
 # template processors. The existing template processors get updated with this
 # dictionary, which means the existing keys get overwritten by the content of this
-# dictionary. The customized addons don't necessarily need to use jinjia templating
-# language. This allows you to define custom logic to process macro template.
+# dictionary. The customized addons don't necessarily need to use Jinja templating
+# language. This allows you to define custom logic to process templates on a per-engine
+# basis. Example value = `{"presto": CustomPrestoTemplateProcessor}`
 CUSTOM_TEMPLATE_PROCESSORS: Dict[str, Type[BaseTemplateProcessor]] = {}
 
 # Roles that are controlled by the API / Superset and should not be changes
@@ -838,11 +878,6 @@ DOCUMENTATION_URL = None
 DOCUMENTATION_TEXT = "Documentation"
 DOCUMENTATION_ICON = None  # Recommended size: 16x16
 
-# Enables the replacement react views for all the FAB views (list, edit, show) with
-# designs introduced in SIP-34: https://github.com/apache/incubator-superset/issues/8976
-# This is a work in progress so not all features available in FAB have been implemented
-ENABLE_REACT_CRUD_VIEWS = False
-
 # What is the Last N days relative in the time selector to:
 # 'today' means it is midnight (00:00:00) in the local timezone
 # 'now' means it is relative to the query issue time
@@ -865,14 +900,6 @@ TALISMAN_CONFIG = {
     "force_https_permanent": False,
 }
 
-# Note that: RowLevelSecurityFilter is only given by default to the Admin role
-# and the Admin Role does have the all_datasources security permission.
-# But, if users create a specific role with access to RowLevelSecurityFilter MVC
-# and a custom datasource access, the table dropdown will not be correctly filtered
-# by that custom datasource access. So we are assuming a default security config,
-# a custom security config could potentially give access to setting filters on
-# tables that users do not have access to.
-ENABLE_ROW_LEVEL_SECURITY = False
 # It is possible to customize which tables and roles are featured in the RLS
 # dropdown. When set, this dict is assigned to `add_form_query_rel_fields` and
 # `edit_form_query_rel_fields` on `RowLevelSecurityFiltersModelView`. Example:
@@ -951,10 +978,10 @@ if CONFIG_PATH_ENV_VAR in os.environ:
             "Failed to import config for %s=%s", CONFIG_PATH_ENV_VAR, cfg_path
         )
         raise
-elif importlib.util.find_spec("superset_config"):
+elif importlib.util.find_spec("superset_config") and not is_test():
     try:
         import superset_config  # pylint: disable=import-error
-        from superset_config import *  # type: ignore  # pylint: disable=import-error,wildcard-import,unused-wildcard-import
+        from superset_config import *  # type: ignore # pylint: disable=import-error,wildcard-import,unused-wildcard-import
 
         print(f"Loaded your LOCAL configuration at [{superset_config.__file__}]")
     except Exception:

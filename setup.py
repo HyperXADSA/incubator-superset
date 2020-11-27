@@ -22,9 +22,6 @@ import sys
 
 from setuptools import find_packages, setup
 
-if sys.version_info < (3, 6):
-    sys.exit("Sorry, Python < 3.6 is not supported")
-
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 PACKAGE_JSON = os.path.join(BASE_DIR, "superset-frontend", "package.json")
@@ -75,9 +72,9 @@ setup(
         "colorama",
         "contextlib2",
         "croniter>=0.3.28",
-        "cryptography>=2.4.2",
+        "cryptography>=3.2.1",
         "flask>=1.1.0, <2.0.0",
-        "flask-appbuilder>=3.0.1, <4.0.0",
+        "flask-appbuilder>=3.1.1, <4.0.0",
         "flask-caching",
         "flask-compress",
         "flask-talisman",
@@ -138,7 +135,7 @@ setup(
         "thumbnails": ["Pillow>=7.0.0, <8.0.0"],
         "vertica": ["sqlalchemy-vertica-python>=0.5.9, < 0.6"],
     },
-    python_requires="~=3.6",
+    python_requires="~=3.7",
     author="Apache Software Foundation",
     author_email="dev@superset.incubator.apache.org",
     url="https://superset.apache.org/",

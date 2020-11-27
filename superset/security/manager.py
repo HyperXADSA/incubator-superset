@@ -135,6 +135,8 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
         "RoleModelView",
         "LogModelView",
         "Security",
+        "Row Level Security",
+        "Row Level Security Filters",
         "RowLevelSecurityFiltersModelView",
     } | USER_MODEL_VIEWS
 
@@ -551,7 +553,6 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
         Creates missing FAB permissions for datasources, schemas and metrics.
         """
 
-        from superset.connectors.base.models import BaseMetric
         from superset.models import core as models
 
         logger.info("Fetching a set of all perms to lookup which ones are missing")
@@ -575,11 +576,6 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
         databases = self.get_session.query(models.Database).all()
         for database in databases:
             merge_pv("database_access", database.perm)
-
-        logger.info("Creating missing metrics permissions")
-        metrics: List[BaseMetric] = []
-        for datasource_class in ConnectorRegistry.sources.values():
-            metrics += list(self.get_session.query(datasource_class.metric_class).all())
 
     def clean_perms(self) -> None:
         """

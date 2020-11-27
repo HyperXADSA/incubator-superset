@@ -49,7 +49,9 @@ const propTypes = {
   timeout: PropTypes.number,
   vizType: PropTypes.string.isRequired,
   triggerRender: PropTypes.bool,
-  owners: PropTypes.arrayOf(PropTypes.string),
+  owners: PropTypes.arrayOf(
+    PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  ),
   // state
   chartAlert: PropTypes.string,
   chartStatus: PropTypes.string,
@@ -63,8 +65,6 @@ const propTypes = {
   onQuery: PropTypes.func,
   onFilterMenuOpen: PropTypes.func,
   onFilterMenuClose: PropTypes.func,
-  // id of the last mounted parent tab
-  mountedParent: PropTypes.string,
 };
 
 const BLANK = {};
@@ -163,10 +163,12 @@ class Chart extends React.PureComponent {
       extra.owners = owners;
       error.extra = extra;
     }
+    const message = chartAlert || queryResponse?.message;
     return (
       <ErrorMessageWithStackTrace
         error={error}
-        message={chartAlert || queryResponse?.message}
+        subtitle={message}
+        copyText={message}
         link={queryResponse ? queryResponse.link : null}
         source={dashboardId ? 'dashboard' : 'explore'}
         stackTrace={chartStackTrace}
@@ -193,15 +195,22 @@ class Chart extends React.PureComponent {
       return this.renderErrorMessage();
     }
     if (errorMessage) {
-      return <Alert bsStyle="warning">{errorMessage}</Alert>;
+      return (
+        <Alert data-test="alert-warning" bsStyle="warning">
+          {errorMessage}
+        </Alert>
+      );
     }
     return (
       <ErrorBoundary
         onError={this.handleRenderContainerFailure}
         showMessage={false}
       >
-        <Styles className="chart-container">
-          <div className={`slice_container ${isFaded ? ' faded' : ''}`}>
+        <Styles className="chart-container" data-test="chart-container">
+          <div
+            className={`slice_container ${isFaded ? ' faded' : ''}`}
+            data-test="slice-container"
+          >
             <ChartRenderer {...this.props} data-test={this.props.vizType} />
           </div>
 

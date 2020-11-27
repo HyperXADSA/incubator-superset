@@ -16,10 +16,13 @@
 # under the License.
 import json
 import logging
+from datetime import datetime
+from io import BytesIO
 from typing import Any, Dict
+from zipfile import ZipFile
 
 import simplejson
-from flask import g, make_response, redirect, request, Response, url_for
+from flask import g, make_response, redirect, request, Response, send_file, url_for
 from flask_appbuilder.api import expose, protect, rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
 from flask_babel import gettext as _, ngettext
@@ -40,7 +43,10 @@ from superset.charts.commands.exceptions import (
     ChartNotFoundError,
     ChartUpdateFailedError,
 )
+from superset.charts.commands.export import ExportChartsCommand
+from superset.charts.commands.importers.dispatcher import ImportChartsCommand
 from superset.charts.commands.update import UpdateChartCommand
+from superset.charts.dao import ChartDAO
 from superset.charts.filters import ChartAllTextFilter, ChartFavoriteFilter, ChartFilter
 from superset.charts.schemas import (
     CHART_SCHEMAS,
@@ -48,10 +54,14 @@ from superset.charts.schemas import (
     ChartPostSchema,
     ChartPutSchema,
     get_delete_ids_schema,
+    get_export_ids_schema,
+    get_fav_star_ids_schema,
     openapi_spec_methods_override,
     screenshot_query_schema,
     thumbnail_query_schema,
 )
+from superset.commands.exceptions import CommandInvalidError
+from superset.commands.importers.v1.utils import remove_root
 from superset.constants import RouteMethod
 from superset.exceptions import SupersetSecurityException
 from superset.extensions import event_logger
@@ -79,10 +89,11 @@ class ChartRestApi(BaseSupersetModelRestApi):
 
     include_route_methods = RouteMethod.REST_MODEL_VIEW_CRUD_SET | {
         RouteMethod.EXPORT,
+        RouteMethod.IMPORT,
         RouteMethod.RELATED,
         "bulk_delete",  # not using RouteMethod since locally defined
         "data",
-        "viz_types",
+        "favorite_status",
     }
     class_permission_name = "SliceModelView"
     show_columns = [
@@ -115,6 +126,8 @@ class ChartRestApi(BaseSupersetModelRestApi):
         "datasource_type",
         "datasource_url",
         "description",
+        "description_markeddown",
+        "edit_url",
         "id",
         "owners.first_name",
         "owners.id",
@@ -139,6 +152,7 @@ class ChartRestApi(BaseSupersetModelRestApi):
     ]
     search_columns = [
         "created_by",
+        "changed_by",
         "datasource_id",
         "datasource_name",
         "datasource_type",
@@ -169,6 +183,8 @@ class ChartRestApi(BaseSupersetModelRestApi):
     apispec_parameter_schemas = {
         "screenshot_query_schema": screenshot_query_schema,
         "get_delete_ids_schema": get_delete_ids_schema,
+        "get_export_ids_schema": get_export_ids_schema,
+        "get_fav_star_ids_schema": get_fav_star_ids_schema,
     }
     """ Add extra schemas to the OpenAPI components schema section """
     openapi_spec_methods = openapi_spec_methods_override
@@ -199,6 +215,7 @@ class ChartRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def post(self) -> Response:
         """Creates a new Chart
         ---
@@ -255,6 +272,7 @@ class ChartRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def put(self, pk: int) -> Response:
         """Changes a Chart
         ---
@@ -328,6 +346,7 @@ class ChartRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def delete(self, pk: int) -> Response:
         """Deletes a Chart
         ---
@@ -378,6 +397,7 @@ class ChartRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @rison(get_delete_ids_schema)
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def bulk_delete(self, **kwargs: Any) -> Response:
         """Delete bulk Charts
         ---
@@ -429,10 +449,10 @@ class ChartRestApi(BaseSupersetModelRestApi):
             return self.response_422(message=str(ex))
 
     @expose("/data", methods=["POST"])
-    @event_logger.log_this
     @protect()
     @safe
     @statsd_metrics
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def data(self) -> Response:
         """
         Takes a query context constructed in the client and returns payload
@@ -517,6 +537,7 @@ class ChartRestApi(BaseSupersetModelRestApi):
     @rison(screenshot_query_schema)
     @safe
     @statsd_metrics
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def cache_screenshot(self, pk: int, **kwargs: Dict[str, bool]) -> WerkzeugResponse:
         """
         ---
@@ -589,6 +610,7 @@ class ChartRestApi(BaseSupersetModelRestApi):
     @rison(screenshot_query_schema)
     @safe
     @statsd_metrics
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def screenshot(self, pk: int, digest: str) -> WerkzeugResponse:
         """Get Chart screenshot
         ---
@@ -642,6 +664,7 @@ class ChartRestApi(BaseSupersetModelRestApi):
     @rison(thumbnail_query_schema)
     @safe
     @statsd_metrics
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def thumbnail(
         self, pk: int, digest: str, **kwargs: Dict[str, bool]
     ) -> WerkzeugResponse:
@@ -709,3 +732,160 @@ class ChartRestApi(BaseSupersetModelRestApi):
         return Response(
             FileWrapper(screenshot), mimetype="image/png", direct_passthrough=True
         )
+
+    @expose("/export/", methods=["GET"])
+    @protect()
+    @safe
+    @statsd_metrics
+    @rison(get_export_ids_schema)
+    @event_logger.log_this_with_context(log_to_statsd=False)
+    def export(self, **kwargs: Any) -> Response:
+        """Export charts
+        ---
+        get:
+          description: >-
+            Exports multiple charts and downloads them as YAML files
+          parameters:
+          - in: query
+            name: q
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/get_export_ids_schema'
+          responses:
+            200:
+              description: A zip file with chart(s), dataset(s) and database(s) as YAML
+              content:
+                application/zip:
+                  schema:
+                    type: string
+                    format: binary
+            400:
+              $ref: '#/components/responses/400'
+            401:
+              $ref: '#/components/responses/401'
+            404:
+              $ref: '#/components/responses/404'
+            500:
+              $ref: '#/components/responses/500'
+        """
+        requested_ids = kwargs["rison"]
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        root = f"chart_export_{timestamp}"
+        filename = f"{root}.zip"
+
+        buf = BytesIO()
+        with ZipFile(buf, "w") as bundle:
+            try:
+                for file_name, file_content in ExportChartsCommand(requested_ids).run():
+                    with bundle.open(f"{root}/{file_name}", "w") as fp:
+                        fp.write(file_content.encode())
+            except ChartNotFoundError:
+                return self.response_404()
+        buf.seek(0)
+
+        return send_file(
+            buf,
+            mimetype="application/zip",
+            as_attachment=True,
+            attachment_filename=filename,
+        )
+
+    @expose("/favorite_status/", methods=["GET"])
+    @protect()
+    @safe
+    @statsd_metrics
+    @rison(get_fav_star_ids_schema)
+    @event_logger.log_this_with_context(log_to_statsd=False)
+    def favorite_status(self, **kwargs: Any) -> Response:
+        """Favorite stars for Charts
+        ---
+        get:
+          description: >-
+            Check favorited dashboards for current user
+          parameters:
+          - in: query
+            name: q
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/get_fav_star_ids_schema'
+          responses:
+            200:
+              description:
+              content:
+                application/json:
+                  schema:
+                    $ref: "#/components/schemas/GetFavStarIdsSchema"
+            400:
+              $ref: '#/components/responses/400'
+            401:
+              $ref: '#/components/responses/401'
+            404:
+              $ref: '#/components/responses/404'
+            500:
+              $ref: '#/components/responses/500'
+        """
+        requested_ids = kwargs["rison"]
+        charts = ChartDAO.find_by_ids(requested_ids)
+        if not charts:
+            return self.response_404()
+        favorited_chart_ids = ChartDAO.favorited_ids(charts, g.user.id)
+        res = [
+            {"id": request_id, "value": request_id in favorited_chart_ids}
+            for request_id in requested_ids
+        ]
+        return self.response(200, result=res)
+
+    @expose("/import/", methods=["POST"])
+    @protect()
+    @safe
+    @statsd_metrics
+    def import_(self) -> Response:
+        """Import chart(s) with associated datasets and databases
+        ---
+        post:
+          requestBody:
+            content:
+              application/zip:
+                schema:
+                  type: string
+                  format: binary
+          responses:
+            200:
+              description: Chart import result
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+            400:
+              $ref: '#/components/responses/400'
+            401:
+              $ref: '#/components/responses/401'
+            422:
+              $ref: '#/components/responses/422'
+            500:
+              $ref: '#/components/responses/500'
+        """
+        upload = request.files.get("formData")
+        if not upload:
+            return self.response_400()
+        with ZipFile(upload) as bundle:
+            contents = {
+                remove_root(file_name): bundle.read(file_name).decode()
+                for file_name in bundle.namelist()
+            }
+
+        command = ImportChartsCommand(contents)
+        try:
+            command.run()
+            return self.response(200, message="OK")
+        except CommandInvalidError as exc:
+            logger.warning("Import chart failed")
+            return self.response_422(message=exc.normalized_messages())
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception("Import chart failed")
+            return self.response_500(message=str(exc))

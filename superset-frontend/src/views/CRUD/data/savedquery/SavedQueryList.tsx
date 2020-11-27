@@ -18,7 +18,7 @@
  */
 
 import { SupersetClient, t, styled } from '@superset-ui/core';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import rison from 'rison';
 import moment from 'moment';
 import {
@@ -39,18 +39,18 @@ import DeleteModal from 'src/components/DeleteModal';
 import ActionsBar, { ActionProps } from 'src/components/ListView/ActionsBar';
 import { IconName } from 'src/components/Icon';
 import { commonMenuData } from 'src/views/CRUD/data/common';
+import { SavedQueryObject } from 'src/views/CRUD/types';
+import SavedQueryPreviewModal from './SavedQueryPreviewModal';
 
 const PAGE_SIZE = 25;
 
 interface SavedQueryListProps {
   addDangerToast: (msg: string) => void;
   addSuccessToast: (msg: string) => void;
+  user: {
+    userId: string | number;
+  };
 }
-
-type SavedQueryObject = {
-  id: number;
-  label: string;
-};
 
 const StyledTableLabel = styled.div`
   .count {
@@ -68,6 +68,7 @@ const StyledPopoverItem = styled.div`
 function SavedQueryList({
   addDangerToast,
   addSuccessToast,
+  user,
 }: SavedQueryListProps) {
   const {
     state: {
@@ -82,22 +83,42 @@ function SavedQueryList({
     refreshData,
   } = useListViewResource<SavedQueryObject>(
     'saved_query',
-    t('saved_queries'),
+    t('Saved Queries'),
     addDangerToast,
   );
-
   const [
     queryCurrentlyDeleting,
     setQueryCurrentlyDeleting,
   ] = useState<SavedQueryObject | null>(null);
+  const [
+    savedQueryCurrentlyPreviewing,
+    setSavedQueryCurrentlyPreviewing,
+  ] = useState<SavedQueryObject | null>(null);
 
-  const canCreate = hasPerm('can_add');
   const canEdit = hasPerm('can_edit');
   const canDelete = hasPerm('can_delete');
 
   const openNewQuery = () => {
     window.open(`${window.location.origin}/superset/sqllab?new=true`);
   };
+
+  const handleSavedQueryPreview = useCallback(
+    (id: number) => {
+      SupersetClient.get({
+        endpoint: `/api/v1/saved_query/${id}`,
+      }).then(
+        ({ json = {} }) => {
+          setSavedQueryCurrentlyPreviewing({ ...json.result });
+        },
+        createErrorHandler(errMsg =>
+          addDangerToast(
+            t('There was an issue previewing the selected query %s', errMsg),
+          ),
+        ),
+      );
+    },
+    [addDangerToast],
+  );
 
   const menuData: SubMenuProps = {
     activeChild: 'Saved Queries',
@@ -115,7 +136,11 @@ function SavedQueryList({
   }
 
   subMenuButtons.push({
-    name: t('+ Query'),
+    name: (
+      <>
+        <i className="fa fa-plus" /> {t('Query')}
+      </>
+    ),
     onClick: openNewQuery,
     buttonStyle: 'primary',
   });
@@ -127,41 +152,44 @@ function SavedQueryList({
     window.open(`${window.location.origin}/superset/sqllab?savedQueryId=${id}`);
   };
 
-  const copyQueryLink = (id: number) => {
-    const selection: Selection | null = document.getSelection();
+  const copyQueryLink = useCallback(
+    (id: number) => {
+      const selection: Selection | null = document.getSelection();
 
-    if (selection) {
-      selection.removeAllRanges();
-      const range = document.createRange();
-      const span = document.createElement('span');
-      span.textContent = `${window.location.origin}/superset/sqllab?savedQueryId=${id}`;
-      span.style.position = 'fixed';
-      span.style.top = '0';
-      span.style.clip = 'rect(0, 0, 0, 0)';
-      span.style.whiteSpace = 'pre';
-
-      document.body.appendChild(span);
-      range.selectNode(span);
-      selection.addRange(range);
-
-      try {
-        if (!document.execCommand('copy')) {
-          throw new Error(t('Not successful'));
-        }
-      } catch (err) {
-        addDangerToast(t('Sorry, your browser does not support copying.'));
-      }
-
-      document.body.removeChild(span);
-      if (selection.removeRange) {
-        selection.removeRange(range);
-      } else {
+      if (selection) {
         selection.removeAllRanges();
-      }
+        const range = document.createRange();
+        const span = document.createElement('span');
+        span.textContent = `${window.location.origin}/superset/sqllab?savedQueryId=${id}`;
+        span.style.position = 'fixed';
+        span.style.top = '0';
+        span.style.clip = 'rect(0, 0, 0, 0)';
+        span.style.whiteSpace = 'pre';
 
-      addSuccessToast(t('Link Copied!'));
-    }
-  };
+        document.body.appendChild(span);
+        range.selectNode(span);
+        selection.addRange(range);
+
+        try {
+          if (!document.execCommand('copy')) {
+            throw new Error(t('Not successful'));
+          }
+        } catch (err) {
+          addDangerToast(t('Sorry, your browser does not support copying.'));
+        }
+
+        document.body.removeChild(span);
+        if (selection.removeRange) {
+          selection.removeRange(range);
+        } else {
+          selection.removeAllRanges();
+        }
+
+        addSuccessToast(t('Link Copied!'));
+      }
+    },
+    [addDangerToast, addSuccessToast],
+  );
 
   const handleQueryDelete = ({ id, label }: SavedQueryObject) => {
     SupersetClient.delete({
@@ -206,29 +234,26 @@ function SavedQueryList({
       {
         accessor: 'database.database_name',
         Header: t('Database'),
+        size: 'xl',
       },
       {
         accessor: 'database',
         hidden: true,
         disableSortBy: true,
-        Cell: ({
-          row: {
-            original: { database },
-          },
-        }: any) => `${database.database_name}`,
       },
       {
         accessor: 'schema',
         Header: t('Schema'),
+        size: 'xl',
       },
       {
         Cell: ({
           row: {
-            original: { sql_tables: tables },
+            original: { sql_tables: tables = [] },
           },
         }: any) => {
           const names = tables.map((table: any) => table.table);
-          const main = names.shift();
+          const main = names.length > 0 ? names.shift() : '';
 
           if (names.length) {
             return (
@@ -241,7 +266,7 @@ function SavedQueryList({
                   content={
                     <>
                       {names.map((name: string) => (
-                        <StyledPopoverItem>{name}</StyledPopoverItem>
+                        <StyledPopoverItem key={name}>{name}</StyledPopoverItem>
                       ))}
                     </>
                   }
@@ -256,6 +281,7 @@ function SavedQueryList({
         },
         accessor: 'sql_tables',
         Header: t('Tables'),
+        size: 'xl',
         disableSortBy: true,
       },
       {
@@ -281,6 +307,7 @@ function SavedQueryList({
         },
         Header: t('Created On'),
         accessor: 'created_on',
+        size: 'xl',
       },
       {
         Cell: ({
@@ -290,17 +317,20 @@ function SavedQueryList({
         }: any) => changedOn,
         Header: t('Modified'),
         accessor: 'changed_on_delta_humanized',
+        size: 'xl',
       },
       {
         Cell: ({ row: { original } }: any) => {
-          const handlePreview = () => {}; // openQueryPreviewModal(original); // TODO: open preview modal
+          const handlePreview = () => {
+            handleSavedQueryPreview(original.id);
+          };
           const handleEdit = () => {
             openInSqlLab(original.id);
           };
           const handleCopy = () => {
             copyQueryLink(original.id);
           };
-          const handleDelete = () => setQueryCurrentlyDeleting(original); // openQueryDeleteModal(original);
+          const handleDelete = () => setQueryCurrentlyDeleting(original);
 
           const actions = [
             {
@@ -344,7 +374,7 @@ function SavedQueryList({
         disableSortBy: true,
       },
     ],
-    [canDelete, canCreate],
+    [canDelete, canEdit, copyQueryLink, handleSavedQueryPreview],
   );
 
   const filters: Filters = useMemo(
@@ -359,9 +389,11 @@ function SavedQueryList({
           'saved_query',
           'database',
           createErrorHandler(errMsg =>
-            t(
-              'An error occurred while fetching dataset datasource values: %s',
-              errMsg,
+            addDangerToast(
+              t(
+                'An error occurred while fetching dataset datasource values: %s',
+                errMsg,
+              ),
             ),
           ),
         ),
@@ -377,7 +409,9 @@ function SavedQueryList({
           'saved_query',
           'schema',
           createErrorHandler(errMsg =>
-            t('An error occurred while fetching schema values: %s', errMsg),
+            addDangerToast(
+              t('An error occurred while fetching schema values: %s', errMsg),
+            ),
           ),
         ),
         paginate: true,
@@ -389,7 +423,7 @@ function SavedQueryList({
         operator: 'all_text',
       },
     ],
-    [],
+    [addDangerToast],
   );
 
   return (
@@ -408,6 +442,16 @@ function SavedQueryList({
           onHide={() => setQueryCurrentlyDeleting(null)}
           open
           title={t('Delete Query?')}
+        />
+      )}
+      {savedQueryCurrentlyPreviewing && (
+        <SavedQueryPreviewModal
+          fetchData={handleSavedQueryPreview}
+          onHide={() => setSavedQueryCurrentlyPreviewing(null)}
+          savedQuery={savedQueryCurrentlyPreviewing}
+          queries={queries}
+          openInSqlLab={openInSqlLab}
+          show
         />
       )}
       <ConfirmStatusChange
@@ -441,6 +485,7 @@ function SavedQueryList({
               bulkActions={bulkActions}
               bulkSelectEnabled={bulkSelectEnabled}
               disableBulkSelect={toggleBulkSelect}
+              highlightRowId={savedQueryCurrentlyPreviewing?.id}
             />
           );
         }}

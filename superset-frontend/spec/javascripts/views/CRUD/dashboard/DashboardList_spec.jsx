@@ -37,6 +37,10 @@ const store = mockStore({});
 
 const dashboardsInfoEndpoint = 'glob:*/api/v1/dashboard/_info*';
 const dashboardOwnersEndpoint = 'glob:*/api/v1/dashboard/related/owners*';
+const dashboardCreatedByEndpoint =
+  'glob:*/api/v1/dashboard/related/created_by*';
+const dashboardFavoriteStatusEndpoint =
+  'glob:*/api/v1/dashboard/favorite_status*';
 const dashboardsEndpoint = 'glob:*/api/v1/dashboard/?*';
 
 const mockDashboards = [...new Array(3)].map((_, i) => ({
@@ -53,12 +57,23 @@ const mockDashboards = [...new Array(3)].map((_, i) => ({
   thumbnail_url: '/thumbnail',
 }));
 
+const mockUser = {
+  userId: 1,
+};
+
 fetchMock.get(dashboardsInfoEndpoint, {
   permissions: ['can_list', 'can_edit', 'can_delete'],
 });
 fetchMock.get(dashboardOwnersEndpoint, {
   result: [],
 });
+fetchMock.get(dashboardCreatedByEndpoint, {
+  result: [],
+});
+fetchMock.get(dashboardFavoriteStatusEndpoint, {
+  result: [],
+});
+
 fetchMock.get(dashboardsEndpoint, {
   result: mockDashboards,
   dashboard_count: 3,
@@ -77,7 +92,7 @@ describe('DashboardList', () => {
   });
 
   const mockedProps = {};
-  const wrapper = mount(<DashboardList {...mockedProps} />, {
+  const wrapper = mount(<DashboardList {...mockedProps} user={mockUser} />, {
     context: { store },
   });
 
@@ -128,12 +143,18 @@ describe('DashboardList', () => {
   });
 
   it('delete', () => {
-    wrapper.find('[data-test="trash"]').first().simulate('click');
+    wrapper
+      .find('[data-test="dashboard-list-trash-icon"]')
+      .first()
+      .simulate('click');
     expect(wrapper.find(ConfirmStatusChange)).toExist();
   });
 
   it('card view delete', () => {
-    wrapper.find('[data-test="trash"]').last().simulate('click');
+    wrapper
+      .find('[data-test="dashboard-list-trash-icon"]')
+      .last()
+      .simulate('click');
     expect(wrapper.find(ConfirmStatusChange)).toExist();
   });
 });

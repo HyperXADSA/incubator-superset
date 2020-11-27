@@ -67,7 +67,6 @@ from superset.utils.core import (
 from superset.utils import schema
 from superset.views.utils import (
     build_extra_filters,
-    get_dashboard_changedon_dt,
     get_form_data,
     get_time_range_endpoints,
 )
@@ -175,12 +174,18 @@ class TestUtils(SupersetTestCase):
     def test_merge_extra_filters(self):
         # does nothing if no extra filters
         form_data = {"A": 1, "B": 2, "c": "test"}
-        expected = {"A": 1, "B": 2, "c": "test"}
+        expected = {**form_data, "applied_time_extras": {}}
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
         # empty extra_filters
         form_data = {"A": 1, "B": 2, "c": "test", "extra_filters": []}
-        expected = {"A": 1, "B": 2, "c": "test", "adhoc_filters": []}
+        expected = {
+            "A": 1,
+            "B": 2,
+            "c": "test",
+            "adhoc_filters": [],
+            "applied_time_extras": {},
+        }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
         # copy over extra filters into empty filters
@@ -206,7 +211,8 @@ class TestUtils(SupersetTestCase):
                     "operator": "==",
                     "subject": "B",
                 },
-            ]
+            ],
+            "applied_time_extras": {},
         }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
@@ -249,7 +255,8 @@ class TestUtils(SupersetTestCase):
                     "operator": "==",
                     "subject": "B",
                 },
-            ]
+            ],
+            "applied_time_extras": {},
         }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
@@ -279,6 +286,13 @@ class TestUtils(SupersetTestCase):
             "time_grain_sqla": "years",
             "granularity": "90 seconds",
             "druid_time_origin": "now",
+            "applied_time_extras": {
+                "__time_range": "1 year ago :",
+                "__time_col": "birth_year",
+                "__time_grain": "years",
+                "__time_origin": "now",
+                "__granularity": "90 seconds",
+            },
         }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
@@ -291,7 +305,7 @@ class TestUtils(SupersetTestCase):
                 {"col": "B", "op": "==", "val": []},
             ]
         }
-        expected = {"adhoc_filters": []}
+        expected = {"adhoc_filters": [], "applied_time_extras": {}}
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
 
@@ -318,7 +332,8 @@ class TestUtils(SupersetTestCase):
                     "operator": "in",
                     "subject": None,
                 }
-            ]
+            ],
+            "applied_time_extras": {},
         }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
@@ -378,7 +393,8 @@ class TestUtils(SupersetTestCase):
                     "operator": "in",
                     "subject": "c",
                 },
-            ]
+            ],
+            "applied_time_extras": {},
         }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
@@ -430,7 +446,8 @@ class TestUtils(SupersetTestCase):
                     "operator": "in",
                     "subject": "a",
                 },
-            ]
+            ],
+            "applied_time_extras": {},
         }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
@@ -479,7 +496,8 @@ class TestUtils(SupersetTestCase):
                     "operator": "in",
                     "subject": "a",
                 },
-            ]
+            ],
+            "applied_time_extras": {},
         }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
@@ -538,7 +556,8 @@ class TestUtils(SupersetTestCase):
                     "operator": "==",
                     "subject": "B",
                 },
-            ]
+            ],
+            "applied_time_extras": {},
         }
         merge_extra_filters(form_data)
         self.assertEqual(form_data, expected)
@@ -1135,14 +1154,3 @@ class TestUtils(SupersetTestCase):
         assert get_form_data_token({"token": "token_abcdefg1"}) == "token_abcdefg1"
         generated_token = get_form_data_token({})
         assert re.match(r"^token_[a-z0-9]{8}$", generated_token) is not None
-
-    def test_get_dashboard_changedon_dt(self) -> None:
-        slug = "world_health"
-        dashboard = db.session.query(Dashboard).filter_by(slug=slug).one()
-        dashboard_last_changedon = dashboard.changed_on
-        slices = dashboard.slices
-        slices_last_changedon = max([slc.changed_on for slc in slices])
-        # drop microsecond in datetime
-        assert get_dashboard_changedon_dt(self, slug) == max(
-            dashboard_last_changedon, slices_last_changedon
-        ).replace(microsecond=0)

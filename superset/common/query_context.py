@@ -18,17 +18,18 @@ import copy
 import logging
 import math
 from datetime import datetime, timedelta
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from typing import Any, cast, ClassVar, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from flask_babel import gettext as _
 
-from superset import app, cache, db, security_manager
+from superset import app, db, is_feature_enabled
 from superset.common.query_object import QueryObject
 from superset.connectors.base.models import BaseDatasource
 from superset.connectors.connector_registry import ConnectorRegistry
 from superset.exceptions import QueryObjectValidationError
+from superset.extensions import cache_manager, security_manager
 from superset.stats_logger import BaseStatsLogger
 from superset.utils import core as utils
 from superset.utils.core import DTTM_ALIAS
@@ -148,6 +149,7 @@ class QueryContext:
         if self.result_type == utils.ChartDataResultType.SAMPLES:
             row_limit = query_obj.row_limit or math.inf
             query_obj = copy.copy(query_obj)
+            query_obj.orderby = []
             query_obj.groupby = []
             query_obj.metrics = []
             query_obj.post_processing = []
@@ -155,11 +157,29 @@ class QueryContext:
             query_obj.row_offset = 0
             query_obj.columns = [o.column_name for o in self.datasource.columns]
         payload = self.get_df_payload(query_obj)
+        # TODO: implement
+        payload["annotation_data"] = []
         df = payload["df"]
         status = payload["status"]
         if status != utils.QueryStatus.FAILED:
             payload["data"] = self.get_data(df)
         del payload["df"]
+
+        filters = query_obj.filter
+        filter_columns = cast(List[str], [flt.get("col") for flt in filters])
+        columns = set(self.datasource.column_names)
+        applied_time_columns, rejected_time_columns = utils.get_time_filter_status(
+            self.datasource, query_obj.applied_time_extras
+        )
+        payload["applied_filters"] = [
+            {"column": col} for col in filter_columns if col in columns
+        ] + applied_time_columns
+        payload["rejected_filters"] = [
+            {"reason": "not_in_datasource", "column": col}
+            for col in filter_columns
+            if col not in columns
+        ] + rejected_time_columns
+
         if self.result_type == utils.ChartDataResultType.RESULTS:
             return {"data": payload["data"]}
         return payload
@@ -189,7 +209,7 @@ class QueryContext:
                 datasource=self.datasource.uid,
                 extra_cache_keys=extra_cache_keys,
                 rls=security_manager.get_rls_ids(self.datasource)
-                if config["ENABLE_ROW_LEVEL_SECURITY"]
+                if is_feature_enabled("ROW_LEVEL_SECURITY")
                 and self.datasource.is_rls_supported
                 else [],
                 changed_on=self.datasource.changed_on,
@@ -214,8 +234,8 @@ class QueryContext:
         status = None
         query = ""
         error_message = None
-        if cache_key and cache and not self.force:
-            cache_value = cache.get(cache_key)
+        if cache_key and cache_manager.data_cache and not self.force:
+            cache_value = cache_manager.data_cache.get(cache_key)
             if cache_value:
                 stats_logger.incr("loading_from_cache")
                 try:
@@ -267,7 +287,7 @@ class QueryContext:
                 status = utils.QueryStatus.FAILED
                 stacktrace = utils.get_stacktrace()
 
-            if is_loaded and cache_key and cache and status != utils.QueryStatus.FAILED:
+            if is_loaded and cache_key and status != utils.QueryStatus.FAILED:
                 set_and_log_cache(
                     cache_key,
                     df,
@@ -282,7 +302,7 @@ class QueryContext:
             "cache_timeout": self.cache_timeout,
             "df": df,
             "error": error_message,
-            "is_cached": cache_key is not None,
+            "is_cached": cache_value is not None,
             "query": query,
             "status": status,
             "stacktrace": stacktrace,

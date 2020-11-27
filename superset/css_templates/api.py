@@ -33,6 +33,7 @@ from superset.css_templates.schemas import (
     get_delete_ids_schema,
     openapi_spec_methods_override,
 )
+from superset.extensions import event_logger
 from superset.models.core import CssTemplate
 from superset.views.base_api import BaseSupersetModelRestApi, statsd_metrics
 
@@ -43,6 +44,7 @@ class CssTemplateRestApi(BaseSupersetModelRestApi):
     datamodel = SQLAInterface(CssTemplate)
 
     include_route_methods = RouteMethod.REST_MODEL_VIEW_CRUD_SET | {
+        RouteMethod.RELATED,
         "bulk_delete",  # not using RouteMethod since locally defined
     }
     class_permission_name = "CssTemplateModelView"
@@ -59,6 +61,7 @@ class CssTemplateRestApi(BaseSupersetModelRestApi):
     ]
     list_columns = [
         "changed_on_delta_humanized",
+        "changed_by",
         "created_on",
         "created_by.first_name",
         "created_by.id",
@@ -72,6 +75,7 @@ class CssTemplateRestApi(BaseSupersetModelRestApi):
     order_columns = ["template_name"]
 
     search_filters = {"template_name": [CssTemplateAllTextFilter]}
+    allowed_rel_fields = {"created_by"}
 
     apispec_parameter_schemas = {
         "get_delete_ids_schema": get_delete_ids_schema,
@@ -84,6 +88,7 @@ class CssTemplateRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @rison(get_delete_ids_schema)
+    @event_logger.log_this_with_context(log_to_statsd=False)
     def bulk_delete(self, **kwargs: Any) -> Response:
         """Delete bulk CSS Templates
         ---

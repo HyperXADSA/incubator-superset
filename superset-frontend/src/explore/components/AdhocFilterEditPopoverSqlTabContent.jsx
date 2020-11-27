@@ -68,7 +68,7 @@ export default class AdhocFilterEditPopoverSqlTabContent extends React.Component
   onSqlExpressionClauseChange(clause) {
     this.props.onChange(
       this.props.adhocFilter.duplicateWith({
-        clause: clause && clause.clause,
+        clause,
         expressionType: EXPRESSION_TYPES.SQL,
       }),
     );
@@ -123,16 +123,16 @@ export default class AdhocFilterEditPopoverSqlTabContent extends React.Component
             className="filter-edit-clause-dropdown"
           />
           <span className="filter-edit-clause-info">
-            <strong>Where</strong> filters by columns.
+            <strong>WHERE</strong> {t('filters by columns')}
             <br />
-            <strong>Having</strong> filters by metrics.
+            <strong>HAVING</strong> {t('filters by metrics')}
           </span>
         </FormGroup>
         <FormGroup>
           <SQLEditor
             ref={this.handleAceEditorRef}
             keywords={keywords}
-            height={`${height - 100}px`}
+            height={`${height - 130}px`}
             onChange={this.onSqlExpressionChange}
             width="100%"
             showGutter={false}

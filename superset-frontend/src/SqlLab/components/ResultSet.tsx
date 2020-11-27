@@ -20,7 +20,7 @@ import React, { CSSProperties } from 'react';
 import { Alert, ButtonGroup, ProgressBar } from 'react-bootstrap';
 import Button from 'src/components/Button';
 import shortid from 'shortid';
-import { t } from '@superset-ui/core';
+import { styled, t } from '@superset-ui/core';
 
 import ErrorMessageWithStackTrace from 'src/components/ErrorMessage/ErrorMessageWithStackTrace';
 import Loading from '../../components/Loading';
@@ -56,6 +56,16 @@ interface ResultSetState {
   showExploreResultsButton: boolean;
   data: Record<string, any>[];
 }
+
+// Making text render line breaks/tabs as is as monospace,
+// but wrapping text too so text doesn't overflow
+const MonospaceDiv = styled.div`
+  font-family: ${({ theme }) => theme.typography.families.monospace};
+  white-space: pre;
+  word-break: break-word;
+  overflow-x: auto;
+  white-space: pre-wrap;
+`;
 
 export default class ResultSet extends React.PureComponent<
   ResultSetProps,
@@ -232,8 +242,10 @@ export default class ResultSet extends React.PureComponent<
       return (
         <div className="result-set-error-message">
           <ErrorMessageWithStackTrace
+            title={t('Database Error')}
             error={query?.errors?.[0]}
-            message={query.errorMessage || undefined}
+            subtitle={<MonospaceDiv>{query.errorMessage}</MonospaceDiv>}
+            copyText={query.errorMessage || undefined}
             link={query.link}
             source="sqllab"
           />

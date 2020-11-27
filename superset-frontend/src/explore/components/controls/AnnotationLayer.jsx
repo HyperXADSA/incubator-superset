@@ -20,13 +20,12 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { CompactPicker } from 'react-color';
 import Button from 'src/components/Button';
-import mathjs from 'mathjs';
+import { parse as mathjsParse } from 'mathjs';
 import {
   t,
   SupersetClient,
   getCategoricalSchemeRegistry,
   getChartMetadataRegistry,
-  ThemeProvider,
   validateNonEmpty,
 } from '@superset-ui/core';
 
@@ -67,7 +66,6 @@ const propTypes = {
   timeColumn: PropTypes.string,
   intervalEndColumn: PropTypes.string,
   vizType: PropTypes.string,
-  theme: PropTypes.object,
 
   error: PropTypes.string,
   colorScheme: PropTypes.string,
@@ -200,7 +198,7 @@ export default class AnnotationLayer extends React.PureComponent {
   isValidFormula(value, annotationType) {
     if (annotationType === ANNOTATION_TYPES.FORMULA) {
       try {
-        mathjs.parse(value).compile().eval({ x: 0 });
+        mathjsParse(value).compile().evaluate({ x: 0 });
       } catch (err) {
         return true;
       }
@@ -599,6 +597,7 @@ export default class AnnotationLayer extends React.PureComponent {
             { value: 'dotted', label: 'Dotted' },
           ]}
           value={style}
+          clearable={false}
           onChange={v => this.setState({ style: v })}
         />
         <SelectControl
@@ -666,7 +665,6 @@ export default class AnnotationLayer extends React.PureComponent {
   render() {
     const { isNew, name, annotationType, sourceType, show } = this.state;
     const isValid = this.isValidForm();
-    const { theme } = this.props;
     const metadata = getChartMetadataRegistry().get(this.props.vizType);
     const supportedAnnotationTypes = metadata
       ? metadata.supportedAnnotationTypes.map(
@@ -676,7 +674,7 @@ export default class AnnotationLayer extends React.PureComponent {
     const supportedSourceTypes = this.getSupportedSourceTypes(annotationType);
 
     return (
-      <ThemeProvider theme={theme}>
+      <>
         {this.props.error && (
           <span style={{ color: 'red' }}>ERROR: {this.props.error}</span>
         )}
@@ -707,6 +705,7 @@ export default class AnnotationLayer extends React.PureComponent {
                 description={t('Choose the Annotation Layer Type')}
                 label={t('Annotation Layer Type')}
                 name="annotation-layer-type"
+                clearable={false}
                 options={supportedAnnotationTypes}
                 value={annotationType}
                 onChange={this.handleAnnotationType}
@@ -743,6 +742,7 @@ export default class AnnotationLayer extends React.PureComponent {
 
             <Button
               buttonSize="sm"
+              buttonStyle="primary"
               disabled={!isValid}
               onClick={this.submitAnnotation}
             >
@@ -750,7 +750,7 @@ export default class AnnotationLayer extends React.PureComponent {
             </Button>
           </div>
         </div>
-      </ThemeProvider>
+      </>
     );
   }
 }

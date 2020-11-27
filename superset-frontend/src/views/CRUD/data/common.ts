@@ -21,7 +21,7 @@ import { isFeatureEnabled, FeatureFlag } from 'src/featureFlags';
 
 export const commonMenuData = {
   name: t('Data'),
-  children: [
+  tabs: [
     {
       name: 'Datasets',
       label: t('Datasets'),
@@ -38,7 +38,13 @@ export const commonMenuData = {
       name: 'Saved Queries',
       label: t('Saved Queries'),
       url: '/savedqueryview/list/',
-      usesRouter: isFeatureEnabled(FeatureFlag.SIP_34_SAVED_QUERIES_UI),
+      usesRouter: true,
+    },
+    {
+      name: 'Query History',
+      label: t('Query History'),
+      url: '/superset/sqllab/history/',
+      usesRouter: isFeatureEnabled(FeatureFlag.SIP_34_QUERY_SEARCH_UI),
     },
   ],
 };

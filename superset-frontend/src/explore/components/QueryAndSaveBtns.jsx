@@ -18,9 +18,10 @@
  */
 import React from 'react';
 import PropTypes from 'prop-types';
-import { ButtonGroup, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { ButtonGroup } from 'react-bootstrap';
 import { t, styled } from '@superset-ui/core';
 
+import { Tooltip } from 'src/common/components/Tooltip';
 import Button from 'src/components/Button';
 import Hotkeys from '../../components/Hotkeys';
 
@@ -54,6 +55,7 @@ const getHotKeys = () =>
 
 const Styles = styled.div`
   display: flex;
+  flex-shrink: 0;
   flex-direction: row;
   align-items: center;
   padding-bottom: ${({ theme }) => 2 * theme.gridUnit}px;
@@ -88,7 +90,7 @@ export default function QueryAndSaveBtns({
       buttonSize="small"
       disabled={!canAdd}
     >
-      <i className="fa fa-stop-circle-o" /> Stop
+      <i className="fa fa-stop-circle-o" /> {t('Stop')}
     </Button>
   ) : (
     <Button
@@ -114,21 +116,21 @@ export default function QueryAndSaveBtns({
             data-toggle="modal"
             disabled={saveButtonDisabled}
             onClick={onSave}
+            data-test="query-save-button"
           >
-            <i className="fa fa-plus-circle" /> Save
+            <i className="fa fa-plus-circle" /> {t('Save')}
           </Button>
         </ButtonGroup>
         {errorMessage && (
           <span>
             {' '}
-            <OverlayTrigger
+            <Tooltip
+              id="query-error-tooltip"
               placement="right"
-              overlay={
-                <Tooltip id="query-error-tooltip">{errorMessage}</Tooltip>
-              }
+              title={errorMessage}
             >
               <i className="fa fa-exclamation-circle text-danger fa-lg" />
-            </OverlayTrigger>
+            </Tooltip>
           </span>
         )}
       </div>

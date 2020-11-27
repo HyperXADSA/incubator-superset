@@ -29,6 +29,8 @@ export type ClientErrorObject = {
   error: string;
   errors?: SupersetError[];
   link?: string;
+  // marshmallow field validation returns the error mssage in the format
+  // of { field: [msg1, msg2] }
   message?: string;
   severity?: string;
   stacktrace?: string;
@@ -103,7 +105,7 @@ export default function getClientErrorObject(
                   {
                     code: 1000,
                     message: t(
-                      'Issue 1000 - The datasource is too large to query.',
+                      'Issue 1000 - The dataset is too large to query.',
                     ),
                   },
                   {

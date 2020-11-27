@@ -18,11 +18,19 @@
  */
 import React from 'react';
 import { action } from '@storybook/addon-actions';
-import { withKnobs, boolean } from '@storybook/addon-knobs';
+import { withKnobs, boolean, select } from '@storybook/addon-knobs';
+import Button from 'src/components/Button';
 import Modal from './Modal';
 import Tabs, { EditableTabs } from './Tabs';
+import AntdPopover from './Popover';
+import { Tooltip as AntdTooltip } from './Tooltip';
 import { Menu } from '.';
 import { Dropdown } from './Dropdown';
+import InfoTooltip from './InfoTooltip';
+import {
+  DatePicker as AntdDatePicker,
+  RangePicker as AntdRangePicker,
+} from './DatePicker';
 
 export default {
   title: 'Common Components',
@@ -115,4 +123,117 @@ export const TabsWithDropdownMenu = () => (
       Tab 1 Content!
     </Tabs.TabPane>
   </EditableTabs>
+);
+
+export const Popover = () => (
+  <AntdPopover
+    trigger={select('Trigger', ['click', 'hover', 'focus'], 'click')}
+    placement={select(
+      'Placement',
+      [
+        'topLeft',
+        'top',
+        'topRight',
+        'leftTop',
+        'left',
+        'leftBottom',
+        'rightTop',
+        'right',
+        'rightBottom',
+        'bottomLeft',
+        'bottom',
+        'bottomRight',
+      ],
+      'topLeft',
+    )}
+    arrowPointAtCenter={boolean('Arrow point at center', false)}
+    content={<div>CONTENT</div>}
+  >
+    <Button>TRIGGER</Button>
+  </AntdPopover>
+);
+
+export const Tooltip = () => (
+  <AntdTooltip
+    title="This is a Tooltip"
+    trigger={select('Trigger', ['click', 'hover', 'focus'], 'click')}
+    placement={select(
+      'Placement',
+      [
+        'topLeft',
+        'top',
+        'topRight',
+        'leftTop',
+        'left',
+        'leftBottom',
+        'rightTop',
+        'right',
+        'rightBottom',
+        'bottomLeft',
+        'bottom',
+        'bottomRight',
+      ],
+      'topLeft',
+    )}
+    arrowPointAtCenter={boolean('Arrow point at center', false)}
+  >
+    <Button>A button with tooltip</Button>
+  </AntdTooltip>
+);
+
+export const StyledInfoTooltip = (args: any) => {
+  const styles = {
+    padding: '100px 0 0 200px',
+  };
+
+  return (
+    <div style={styles}>
+      <InfoTooltip tooltip="This is the text that will display!" {...args} />
+    </div>
+  );
+};
+
+StyledInfoTooltip.args = {
+  placement: 'right',
+  trigger: 'hover',
+};
+
+StyledInfoTooltip.argTypes = {
+  placement: {
+    name: 'Placement',
+    control: {
+      type: 'select',
+      options: [
+        'bottom',
+        'left',
+        'right',
+        'top',
+        'topLeft',
+        'topRight',
+        'bottomLeft',
+        'bottomRight',
+        'leftTop',
+        'leftBottom',
+        'rightTop',
+        'rightBottom',
+      ],
+    },
+  },
+
+  trigger: {
+    name: 'Trigger',
+    control: {
+      type: 'select',
+      options: ['hover', 'click'],
+    },
+  },
+};
+
+export const DatePicker = () => <AntdDatePicker showTime />;
+export const DateRangePicker = () => (
+  <AntdRangePicker
+    format="YYYY-MM-DD hh:mm a"
+    showTime={{ format: 'hh:mm a' }}
+    use12Hours
+  />
 );

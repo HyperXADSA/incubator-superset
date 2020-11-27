@@ -18,8 +18,8 @@
  */
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Tooltip, OverlayTrigger, MenuItem } from 'react-bootstrap';
 import { t } from '@superset-ui/core';
+import { Tooltip } from 'src/common/components/Tooltip';
 import withToasts from 'src/messageToasts/enhancers/withToasts';
 
 const propTypes = {
@@ -28,7 +28,6 @@ const propTypes = {
   onCopyEnd: PropTypes.func,
   shouldShowText: PropTypes.bool,
   text: PropTypes.string,
-  inMenu: PropTypes.bool,
   wrapped: PropTypes.bool,
   tooltipText: PropTypes.string,
   addDangerToast: PropTypes.func.isRequired,
@@ -38,7 +37,6 @@ const defaultProps = {
   copyNode: <span>Copy</span>,
   onCopyEnd: () => {},
   shouldShowText: true,
-  inMenu: false,
   wrapped: true,
   tooltipText: t('Copy to clipboard'),
 };
@@ -70,6 +68,18 @@ class CopyToClipboard extends React.Component {
     } else {
       this.copyToClipboard(this.props.text);
     }
+  }
+
+  getDecoratedCopyNode() {
+    return React.cloneElement(
+      this.props.copyNode,
+      {
+        style: { cursor: 'pointer' },
+        onClick: this.onClick,
+        onMouseOut: this.onMouseOut,
+      },
+      null,
+    );
   }
 
   resetTooltipText() {
@@ -121,19 +131,18 @@ class CopyToClipboard extends React.Component {
   }
 
   renderNotWrapped() {
-    const { copyNode } = this.props;
     return (
-      <OverlayTrigger
+      <Tooltip
+        id="copy-to-clipboard-tooltip"
         placement="top"
         style={{ cursor: 'pointer' }}
-        overlay={this.renderTooltip()}
+        title={this.tooltipText()}
         trigger={['hover']}
-        bsStyle="link"
         onClick={this.onClick}
         onMouseOut={this.onMouseOut}
       >
-        {copyNode}
-      </OverlayTrigger>
+        {this.getDecoratedCopyNode()}
+      </Tooltip>
     );
   }
 
@@ -145,54 +154,24 @@ class CopyToClipboard extends React.Component {
             {this.props.text}
           </span>
         )}
-        <OverlayTrigger
+        <Tooltip
+          id="copy-to-clipboard-tooltip"
           placement="top"
-          style={{ cursor: 'pointer' }}
-          overlay={this.renderTooltip()}
+          title={this.tooltipText()}
           trigger={['hover']}
-          bsStyle="link"
-          onClick={this.onClick}
-          onMouseOut={this.onMouseOut}
         >
-          {this.props.copyNode}
-        </OverlayTrigger>
+          {this.getDecoratedCopyNode()}
+        </Tooltip>
       </span>
     );
   }
 
-  renderInMenu() {
-    return (
-      <OverlayTrigger
-        placement="top"
-        overlay={this.renderTooltip()}
-        trigger={['hover']}
-      >
-        <MenuItem>
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={this.onClick}
-            onMouseOut={this.onMouseOut}
-          >
-            {this.props.copyNode}
-          </span>
-        </MenuItem>
-      </OverlayTrigger>
-    );
-  }
-
-  renderTooltip() {
-    return (
-      <Tooltip id="copy-to-clipboard-tooltip">{this.tooltipText()}</Tooltip>
-    );
-  }
-
   render() {
-    const { wrapped, inMenu } = this.props;
+    const { wrapped } = this.props;
     if (!wrapped) {
       return this.renderNotWrapped();
     }
-    return inMenu ? this.renderInMenu() : this.renderLink();
+    return this.renderLink();
   }
 }
 

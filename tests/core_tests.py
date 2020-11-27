@@ -155,7 +155,7 @@ class TestCore(SupersetTestCase):
         response = json.loads(rv.data.decode("utf-8"))
         self.assertEqual(rv.status_code, 200)
 
-        expeted_response = {
+        expected_response = {
             "options": [
                 {
                     "label": "ab_role",
@@ -163,11 +163,12 @@ class TestCore(SupersetTestCase):
                     "title": "ab_role",
                     "type": "table",
                     "value": "ab_role",
+                    "extra": None,
                 }
             ],
             "tableLength": 1,
         }
-        self.assertEqual(response, expeted_response)
+        self.assertEqual(response, expected_response)
 
     def test_get_superset_tables_not_found(self):
         self.login(username="admin")
@@ -199,11 +200,16 @@ class TestCore(SupersetTestCase):
         self.assertIn("id", resp_annotations["result"][0])
         self.assertIn("name", resp_annotations["result"][0])
 
-        layer = self.get_resp(
+        response = self.get_resp(
             f"/superset/annotation_json/{layer.id}?form_data="
             + quote(json.dumps({"time_range": "100 years ago : now"}))
         )
-        self.assertIn("my_annotation", layer)
+        assert "my_annotation" in response
+
+        # Rollback changes
+        db.session.delete(annotation)
+        db.session.delete(layer)
+        db.session.commit()
 
     def test_admin_only_permissions(self):
         def assert_admin_permission_in(role_name, assert_func):
@@ -588,10 +594,10 @@ class TestCore(SupersetTestCase):
         ) == [{"slice_id": slc.id, "viz_error": None, "viz_status": "success"}]
 
     def test_cache_logging(self):
-        slc = self.get_slice("Girls", db.session)
-        self.get_json_resp("/superset/warm_up_cache?slice_id={}".format(slc.id))
+        girls_slice = self.get_slice("Girls", db.session)
+        self.get_json_resp("/superset/warm_up_cache?slice_id={}".format(girls_slice.id))
         ck = db.session.query(CacheKey).order_by(CacheKey.id.desc()).first()
-        assert ck.datasource_uid == "3__table"
+        assert ck.datasource_uid == f"{girls_slice.table.id}__table"
 
     def test_shortner(self):
         self.login(username="admin")
@@ -664,103 +670,14 @@ class TestCore(SupersetTestCase):
             f"/superset/extra_table_metadata/{example_db.id}/birth_names/{schema}/"
         )
 
-    def test_process_template(self):
-        maindb = utils.get_example_database()
-        if maindb.backend == "presto":
-            # TODO: make it work for presto
-            return
-        sql = "SELECT '{{ datetime(2017, 1, 1).isoformat() }}'"
-        tp = jinja_context.get_template_processor(database=maindb)
-        rendered = tp.process_template(sql)
-        self.assertEqual("SELECT '2017-01-01T00:00:00'", rendered)
-
-    def test_get_template_kwarg(self):
-        maindb = utils.get_example_database()
-        if maindb.backend == "presto":
-            # TODO: make it work for presto
-            return
-        s = "{{ foo }}"
-        tp = jinja_context.get_template_processor(database=maindb, foo="bar")
-        rendered = tp.process_template(s)
-        self.assertEqual("bar", rendered)
-
-    def test_template_kwarg(self):
-        maindb = utils.get_example_database()
-        if maindb.backend == "presto":
-            # TODO: make it work for presto
-            return
-        s = "{{ foo }}"
-        tp = jinja_context.get_template_processor(database=maindb)
-        rendered = tp.process_template(s, foo="bar")
-        self.assertEqual("bar", rendered)
-
     def test_templated_sql_json(self):
         if utils.get_example_database().backend == "presto":
             # TODO: make it work for presto
             return
         self.login()
-        sql = "SELECT '{{ datetime(2017, 1, 1).isoformat() }}' as test"
+        sql = "SELECT '{{ 1+1 }}' as test"
         data = self.run_sql(sql, "fdaklj3ws")
-        self.assertEqual(data["data"][0]["test"], "2017-01-01T00:00:00")
-
-    @mock.patch("tests.superset_test_custom_template_processors.datetime")
-    def test_custom_process_template(self, mock_dt) -> None:
-        """Test macro defined in custom template processor works."""
-        mock_dt.utcnow = mock.Mock(return_value=datetime.datetime(1970, 1, 1))
-        db = mock.Mock()
-        db.backend = "db_for_macros_testing"
-        tp = jinja_context.get_template_processor(database=db)
-
-        sql = "SELECT '$DATE()'"
-        rendered = tp.process_template(sql)
-        self.assertEqual("SELECT '{}'".format("1970-01-01"), rendered)
-
-        sql = "SELECT '$DATE(1, 2)'"
-        rendered = tp.process_template(sql)
-        self.assertEqual("SELECT '{}'".format("1970-01-02"), rendered)
-
-    def test_custom_get_template_kwarg(self):
-        """Test macro passed as kwargs when getting template processor
-        works in custom template processor."""
-        db = mock.Mock()
-        db.backend = "db_for_macros_testing"
-        s = "$foo()"
-        tp = jinja_context.get_template_processor(database=db, foo=lambda: "bar")
-        rendered = tp.process_template(s)
-        self.assertEqual("bar", rendered)
-
-    def test_custom_template_kwarg(self) -> None:
-        """Test macro passed as kwargs when processing template
-        works in custom template processor."""
-        db = mock.Mock()
-        db.backend = "db_for_macros_testing"
-        s = "$foo()"
-        tp = jinja_context.get_template_processor(database=db)
-        rendered = tp.process_template(s, foo=lambda: "bar")
-        self.assertEqual("bar", rendered)
-
-    def test_custom_template_processors_overwrite(self) -> None:
-        """Test template processor for presto gets overwritten by custom one."""
-        db = mock.Mock()
-        db.backend = "db_for_macros_testing"
-        tp = jinja_context.get_template_processor(database=db)
-
-        sql = "SELECT '{{ datetime(2017, 1, 1).isoformat() }}'"
-        rendered = tp.process_template(sql)
-        self.assertEqual(sql, rendered)
-
-        sql = "SELECT '{{ DATE(1, 2) }}'"
-        rendered = tp.process_template(sql)
-        self.assertEqual(sql, rendered)
-
-    def test_custom_template_processors_ignored(self) -> None:
-        """Test custom template processor is ignored for a difference backend
-        database."""
-        maindb = utils.get_example_database()
-        sql = "SELECT '$DATE()'"
-        tp = jinja_context.get_template_processor(database=maindb)
-        rendered = tp.process_template(sql)
-        assert sql == rendered
+        self.assertEqual(data["data"][0]["test"], "2")
 
     @mock.patch("tests.superset_test_custom_template_processors.datetime")
     @mock.patch("superset.sql_lab.get_sql_results")
@@ -946,7 +863,7 @@ class TestCore(SupersetTestCase):
 
     def test_get_select_star_not_allowed(self):
         """
-            Database API: Test get select star not allowed
+        Database API: Test get select star not allowed
         """
         self.login(username="gamma")
         example_db = utils.get_example_database()

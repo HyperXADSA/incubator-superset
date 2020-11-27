@@ -20,12 +20,13 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
-import { Alert, FormControl, FormGroup, Modal, Radio } from 'react-bootstrap';
+import { Alert, FormControl, FormGroup, Radio } from 'react-bootstrap';
+import { t } from '@superset-ui/core';
+import ReactMarkdown from 'react-markdown';
+import Modal from 'src/common/components/Modal';
 import Button from 'src/components/Button';
 import FormLabel from 'src/components/FormLabel';
 import { CreatableSelect } from 'src/components/Select/SupersetStyledSelect';
-import { t } from '@superset-ui/core';
-import ReactMarkdown from 'react-markdown';
 
 const propTypes = {
   can_overwrite: PropTypes.bool,
@@ -132,11 +133,41 @@ class SaveModal extends React.Component {
 
   render() {
     return (
-      <Modal show onHide={this.props.onHide}>
-        <Modal.Header closeButton>
-          <Modal.Title>{t('Save Chart')}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
+      <Modal
+        show
+        onHide={this.props.onHide}
+        title={t('Save Chart')}
+        footer={
+          <div data-test="save-modal-footer">
+            <Button id="btn_cancel" buttonSize="sm" onClick={this.props.onHide}>
+              {t('Cancel')}
+            </Button>
+            <Button
+              id="btn_modal_save_goto_dash"
+              buttonSize="sm"
+              disabled={
+                !this.state.newSliceName || !this.state.newDashboardName
+              }
+              onClick={this.saveOrOverwrite.bind(this, true)}
+            >
+              {t('Save & go to dashboard')}
+            </Button>
+            <Button
+              id="btn_modal_save"
+              buttonSize="sm"
+              buttonStyle="primary"
+              onClick={this.saveOrOverwrite.bind(this, false)}
+              disabled={!this.state.newSliceName}
+              data-test="btn-modal-save"
+            >
+              {!this.props.can_overwrite && this.props.slice
+                ? t('Save as new chart')
+                : t('Save')}
+            </Button>
+          </div>
+        }
+      >
+        <div data-test="save-modal-body">
           {(this.state.alert || this.props.alert) && (
             <Alert>
               {this.state.alert ? this.state.alert : this.props.alert}
@@ -150,18 +181,20 @@ class SaveModal extends React.Component {
               />
             </Alert>
           )}
-          <FormGroup>
+          <FormGroup data-test="radio-group">
             <Radio
               id="overwrite-radio"
               inline
               disabled={!(this.props.can_overwrite && this.props.slice)}
               checked={this.state.action === 'overwrite'}
               onChange={this.changeAction.bind(this, 'overwrite')}
+              data-test="save-overwrite-radio"
             >
               {t('Save (Overwrite)')}
             </Radio>
             <Radio
               id="saveas-radio"
+              data-test="saveas-radio"
               inline
               checked={this.state.action === 'saveas'}
               onChange={this.changeAction.bind(this, 'saveas')}
@@ -180,10 +213,11 @@ class SaveModal extends React.Component {
               placeholder="Name"
               value={this.state.newSliceName}
               onChange={this.onSliceNameChange}
+              data-test="new-chart-name"
             />
           </FormGroup>
-          <FormGroup>
-            <FormLabel required>{t('Add to dashboard')}</FormLabel>
+          <FormGroup data-test="save-chart-modal-select-dashboard-form">
+            <FormLabel>{t('Add to dashboard')}</FormLabel>
             <CreatableSelect
               id="dashboard-creatable-select"
               className="save-modal-selector"
@@ -204,34 +238,7 @@ class SaveModal extends React.Component {
               }
             />
           </FormGroup>
-        </Modal.Body>
-
-        <Modal.Footer>
-          <div className="float-right">
-            <Button id="btn_cancel" buttonSize="sm" onClick={this.props.onHide}>
-              {t('Cancel')}
-            </Button>
-            <Button
-              id="btn_modal_save_goto_dash"
-              buttonSize="sm"
-              disabled={
-                !this.state.newSliceName || !this.state.newDashboardName
-              }
-              onClick={this.saveOrOverwrite.bind(this, true)}
-            >
-              {t('Save & go to dashboard')}
-            </Button>
-            <Button
-              id="btn_modal_save"
-              buttonSize="sm"
-              buttonStyle="primary"
-              onClick={this.saveOrOverwrite.bind(this, false)}
-              disabled={!this.state.newSliceName}
-            >
-              {t('Save')}
-            </Button>
-          </div>
-        </Modal.Footer>
+        </div>
       </Modal>
     );
   }

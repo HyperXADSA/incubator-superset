@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import React, { CSSProperties } from 'react';
+import React, { CSSProperties, ComponentType, ReactNode } from 'react';
 import { css, SerializedStyles, ClassNames } from '@emotion/core';
 import { supersetTheme } from '@superset-ui/core';
 import {
@@ -24,9 +24,14 @@ import {
   Theme,
   SelectComponentsConfig,
   components as defaultComponents,
+  InputProps as ReactSelectInputProps,
 } from 'react-select';
+import { Props as SelectProps } from 'react-select/src/Select';
 import { colors as reactSelectColros } from 'react-select/src/theme';
 import { supersetColors } from 'src/components/styles';
+import { DeepNonNullable } from 'react-select/src/components';
+import { OptionType } from 'antd/lib/select';
+import { SupersetStyledSelectProps } from './SupersetStyledSelect';
 
 export const DEFAULT_CLASS_NAME = 'Select';
 export const DEFAULT_CLASS_NAME_PREFIX = 'Select';
@@ -125,7 +130,7 @@ export const DEFAULT_STYLES: PartialStylesConfig = {
   clearIndicator: provider => [
     provider,
     css`
-      padding-right: 0;
+      padding: 4px 0 4px 6px;
     `,
   ],
   control: (
@@ -153,6 +158,7 @@ export const DEFAULT_STYLES: PartialStylesConfig = {
           border-color: ${borderColor};
           box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
         }
+        flex-wrap: nowrap;
       `,
     ];
   },
@@ -239,11 +245,51 @@ export const DEFAULT_STYLES: PartialStylesConfig = {
     paddingLeft: baseUnit * 1.2,
     paddingRight: baseUnit * 1.2,
   }),
+  input: (provider, { selectProps }) => [
+    provider,
+    css`
+      margin-left: 0;
+      vertical-align: middle;
+      ${selectProps?.isMulti && selectProps?.value?.length
+        ? 'padding: 0 6px; width: 100%'
+        : 'padding: 0; flex: 1 1 auto;'};
+    `,
+  ],
 };
 
-const { ClearIndicator, DropdownIndicator, Option } = defaultComponents;
+const inputTagStyles = {
+  background: 'none',
+  border: 'none',
+  outline: 'none',
+  padding: 0,
+  width: '100%',
+};
 
-export const DEFAULT_COMPONENTS: SelectComponentsConfig<any> = {
+export type SelectComponentsType = Omit<
+  SelectComponentsConfig<any>,
+  'Input'
+> & {
+  Input: ComponentType<InputProps>;
+};
+
+// react-select is missing selectProps from their props type
+// so overwriting it here to avoid errors
+export type InputProps = ReactSelectInputProps & {
+  placeholder?: ReactNode;
+  selectProps: SelectProps;
+  autocomplete?: string;
+  onPaste?: SupersetStyledSelectProps<OptionType>['onPaste'];
+  inputStyle?: object;
+};
+
+const {
+  ClearIndicator,
+  DropdownIndicator,
+  Option,
+  Input,
+} = defaultComponents as Required<DeepNonNullable<SelectComponentsType>>;
+
+export const DEFAULT_COMPONENTS: SelectComponentsType = {
   Option: ({ children, innerProps, data, ...props }) => (
     <ClassNames>
       {({ css }) => (
@@ -272,6 +318,22 @@ export const DEFAULT_COMPONENTS: SelectComponentsConfig<any> = {
       />
     </DropdownIndicator>
   ),
+  Input: (props: InputProps) => {
+    const {
+      selectProps: { isMulti, value, placeholder },
+      getStyles,
+    } = props;
+    const isMultiWithValue = isMulti && Array.isArray(value) && value.length;
+    return (
+      <Input
+        {...props}
+        placeholder={isMultiWithValue ? placeholder : undefined}
+        css={getStyles('input', props)}
+        autocomplete="chrome-off"
+        inputStyle={inputTagStyles}
+      />
+    );
+  },
 };
 
 export const VALUE_LABELED_STYLES: PartialStylesConfig = {
@@ -282,10 +344,12 @@ export const VALUE_LABELED_STYLES: PartialStylesConfig = {
       theme: {
         spacing: { baseUnit },
       },
+      isMulti,
     },
   ) => ({
     ...provider,
     paddingLeft: getValue().length > 0 ? 1 : baseUnit * 3,
+    overflow: isMulti && getValue().length > 0 ? 'visible' : 'hidden',
   }),
   // render single value as is they are multi-value
   singleValue: (provider, props) => {
